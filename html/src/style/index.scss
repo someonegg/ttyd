@@ -74,13 +74,19 @@ body {
 }
 
 .mobile-keyboard-dragbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  box-sizing: border-box;
   text-align: center;
   font-size: 11px;
+  line-height: 1.2;
   letter-spacing: 0.04em;
   color: rgba(255, 255, 255, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  padding: 7px 0;
+  padding: 0 10px;
   cursor: grab;
 }
 

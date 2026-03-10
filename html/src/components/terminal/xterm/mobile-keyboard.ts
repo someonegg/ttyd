@@ -284,9 +284,8 @@ type PressState = {
 
 const MODIFIER_KEYS: ModifierKey[] = ['ctrl', 'alt', 'shift'];
 
-const PANEL_INITIAL_MARGIN = 24;
+const PANEL_INITIAL_MARGIN = 36;
 const PANEL_MIN_MARGIN = 18;
-const DOUBLE_TAP_INTERVAL_MS = 320;
 const TAP_MOVE_THRESHOLD_PX = 8;
 
 export const DEFAULT_DYNAMIC_LAYOUTS: DynamicLayout[] = [
@@ -588,8 +587,6 @@ export class MobileKeyboardController {
     private holdDelayTimer = -1;
     private holdIntervalTimer = -1;
     private holdTriggered = false;
-    private lastDragTapTime = 0;
-    private pendingSingleTapTimer = -1;
 
     // Lifecycle
     constructor(private options: MobileKeyboardControllerOptions) {
@@ -619,7 +616,6 @@ export class MobileKeyboardController {
 
     dispose() {
         this.stopHoldTimers();
-        this.clearPendingSingleTap();
         this.panel.removeEventListener('pointermove', this.onDragMove);
         this.panel.removeEventListener('pointerup', this.onDragEnd);
         this.panel.removeEventListener('pointercancel', this.onDragEnd);
@@ -785,11 +781,8 @@ export class MobileKeyboardController {
         if (this.dragBar) {
             const current = this.currentLayoutIndex + 1;
             const total = Math.max(1, this.dynamicLayouts.length);
-            this.dragBar.textContent = `Drag · L${current}/${total}`;
-            this.dragBar.setAttribute(
-                'aria-label',
-                `Drag bar, layout ${current} of ${total}. Tap to cycle layout, double-tap to send Enter`
-            );
+            this.dragBar.textContent = `Drag / Tap · L${current}/${total}`;
+            this.dragBar.setAttribute('aria-label', `Drag bar, layout ${current} of ${total}. Tap to cycle layout`);
         }
     }
 
@@ -1029,26 +1022,6 @@ export class MobileKeyboardController {
         return button;
     }
 
-    private clearPendingSingleTap() {
-        if (this.pendingSingleTapTimer >= 0) {
-            window.clearTimeout(this.pendingSingleTapTimer);
-            this.pendingSingleTapTimer = -1;
-        }
-    }
-
-    private scheduleSingleTapLayoutCycle() {
-        this.clearPendingSingleTap();
-        this.pendingSingleTapTimer = window.setTimeout(() => {
-            this.pendingSingleTapTimer = -1;
-            this.lastDragTapTime = 0;
-            this.cycleLayout();
-        }, DOUBLE_TAP_INTERVAL_MS);
-    }
-
-    private dispatchHeaderEnter() {
-        this.options.onDispatchAction({ kind: 'send-char', char: '\r' }, emptyModifiers());
-    }
-
     private syncModifierButtons() {
         MODIFIER_KEYS.forEach(key => {
             const button = this.modifierButtons.get(key);
@@ -1106,7 +1079,7 @@ export class MobileKeyboardController {
     private onDragStart = (event: PointerEvent) => {
         if (this.dragging) return;
         event.preventDefault();
-        this.clearPendingSingleTap();
+        event.stopPropagation();
         this.dragging = true;
         this.dragPointerId = event.pointerId;
         this.dragStartX = event.clientX;
@@ -1130,6 +1103,8 @@ export class MobileKeyboardController {
 
     private onDragMove = (event: PointerEvent) => {
         if (!this.dragging || event.pointerId !== this.dragPointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
         const nextX = this.panelStartX + (event.clientX - this.dragStartX);
         const nextY = this.panelStartY + (event.clientY - this.dragStartY);
         const clamped = this.clampPosition(
@@ -1147,11 +1122,12 @@ export class MobileKeyboardController {
 
     private onDragEnd = (event: PointerEvent) => {
         if (!this.dragging || event.pointerId !== this.dragPointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
         const movedDistance = Math.max(
             Math.abs(event.clientX - this.dragStartX),
             Math.abs(event.clientY - this.dragStartY)
         );
-        const now = Date.now();
 
         this.finishDrag();
 
@@ -1161,18 +1137,9 @@ export class MobileKeyboardController {
         this.applyPanelPosition();
 
         if (movedDistance > TAP_MOVE_THRESHOLD_PX) {
-            this.clearPendingSingleTap();
-            this.lastDragTapTime = 0;
             return;
         }
-        if (now - this.lastDragTapTime <= DOUBLE_TAP_INTERVAL_MS) {
-            this.clearPendingSingleTap();
-            this.lastDragTapTime = 0;
-            this.dispatchHeaderEnter();
-            return;
-        }
-        this.lastDragTapTime = now;
-        this.scheduleSingleTapLayoutCycle();
+        this.cycleLayout();
     };
 
     private finishDrag() {

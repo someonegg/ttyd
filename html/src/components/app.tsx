@@ -34,7 +34,7 @@ const clientOptions = {
     mobileKeyboardLayouts: [
         ...DEFAULT_DYNAMIC_LAYOUTS.map(layout => [...layout] as MobileKeyboardLayoutSpec),
         [
-            'space',
+            'enter',
             { key: 'tmux_copy_mode', page: 2 },
             'tmux_detach',
             { key: 'tmux_new_window', page: 1 },
