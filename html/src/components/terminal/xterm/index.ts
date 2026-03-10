@@ -96,6 +96,12 @@ function addEventListener(target: EventTarget, type: string, listener: EventList
     return toDisposable(() => target.removeEventListener(type, listener));
 }
 
+const BATCH_INPUT_GAP_PX = 10;
+const BATCH_INPUT_MIN_WIDTH_PX = 180;
+const BATCH_INPUT_MAX_WIDTH_PX = 320;
+const BATCH_INPUT_MIN_HEIGHT_PX = 120;
+const BATCH_INPUT_VIEWPORT_MARGIN_PX = 8;
+
 export class Xterm {
     private disposables: IDisposable[] = [];
     private textEncoder = new TextEncoder();
@@ -128,6 +134,10 @@ export class Xterm {
     private lastTouchTapTime = 0;
     private lastTouchTapX = 0;
     private lastTouchTapY = 0;
+    private batchInputPanel?: HTMLDivElement;
+    private batchInputTextarea?: HTMLTextAreaElement;
+    private batchInputDraft = '';
+    private batchInputOpen = false;
 
     private writeFunc = (data: ArrayBuffer) => this.writeData(new Uint8Array(data));
 
@@ -139,6 +149,7 @@ export class Xterm {
     dispose() {
         this.reconnectKeyDisposable?.dispose();
         this.reconnectKeyDisposable = undefined;
+        this.destroyBatchInputPanel();
         this.mobileKeyboard?.dispose();
         this.mobileKeyboard = undefined;
         this.touchTapCount = 0;
@@ -250,6 +261,7 @@ export class Xterm {
     @bind
     private syncMobileKeyboard() {
         if (!this.shouldEnableMobileKeyboard()) {
+            this.closeBatchInputPanel(false);
             this.mobileKeyboard?.dispose();
             this.mobileKeyboard = undefined;
             return;
@@ -291,6 +303,186 @@ export class Xterm {
     private keepTerminalFocus() {
         this.terminal?.focus();
         window.setTimeout(() => this.terminal?.focus(), 0);
+    }
+
+    @bind
+    private ensureBatchInputPanel() {
+        if (this.batchInputPanel) return;
+        const mount = this.parent;
+        if (!mount) return;
+
+        const panel = document.createElement('div');
+        panel.className = 'mobile-batch-input-panel';
+        panel.setAttribute('aria-hidden', 'true');
+
+        const header = document.createElement('div');
+        header.className = 'mobile-batch-input-header';
+        const title = document.createElement('span');
+        title.textContent = 'Input Panel';
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'mobile-batch-input-close';
+        closeBtn.textContent = 'Cancel';
+        closeBtn.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeBatchInputPanel(false);
+        });
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+
+        const textarea = document.createElement('textarea');
+        textarea.className = 'mobile-batch-input-textarea';
+        textarea.setAttribute('aria-label', 'Input panel');
+        textarea.setAttribute('spellcheck', 'false');
+        textarea.setAttribute('autocapitalize', 'off');
+        textarea.setAttribute('autocorrect', 'off');
+        textarea.value = this.batchInputDraft;
+        textarea.addEventListener('input', () => {
+            this.batchInputDraft = textarea.value;
+        });
+        textarea.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            this.closeBatchInputPanel(false);
+        });
+
+        panel.appendChild(header);
+        panel.appendChild(textarea);
+        mount.appendChild(panel);
+
+        this.batchInputPanel = panel;
+        this.batchInputTextarea = textarea;
+    }
+
+    @bind
+    private destroyBatchInputPanel() {
+        this.batchInputPanel?.remove();
+        this.batchInputPanel = undefined;
+        this.batchInputTextarea = undefined;
+        this.batchInputOpen = false;
+        this.batchInputDraft = '';
+    }
+
+    @bind
+    private openBatchInputPanel() {
+        this.ensureBatchInputPanel();
+        const panel = this.batchInputPanel;
+        const textarea = this.batchInputTextarea;
+        if (!panel || !textarea) return;
+
+        textarea.value = this.batchInputDraft;
+        panel.classList.add('is-open');
+        panel.setAttribute('aria-hidden', 'false');
+        this.batchInputOpen = true;
+        this.repositionBatchInputPanel();
+        textarea.focus({ preventScroll: true });
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+
+    @bind
+    private closeBatchInputPanel(shouldSubmit: boolean) {
+        if (!this.batchInputOpen) return;
+        const textarea = this.batchInputTextarea;
+        const text = textarea?.value ?? this.batchInputDraft;
+        if (shouldSubmit && text !== '') {
+            this.mobileKeyboard?.clearModifiers();
+            this.terminal?.paste(text);
+            this.overlayAddon?.showOverlay('Paste', 300);
+        }
+
+        textarea?.blur();
+        this.batchInputOpen = false;
+        this.batchInputPanel?.classList.remove('is-open');
+        this.batchInputPanel?.setAttribute('aria-hidden', 'true');
+        this.batchInputDraft = '';
+        if (textarea) {
+            textarea.value = '';
+        }
+        this.keepTerminalFocus();
+    }
+
+    @bind
+    private handleBatchInputToggle() {
+        if (this.batchInputOpen) {
+            this.closeBatchInputPanel(true);
+            return;
+        }
+        this.openBatchInputPanel();
+    }
+
+    @bind
+    private repositionBatchInputPanel() {
+        const panel = this.batchInputPanel;
+        if (!panel) return;
+
+        const viewport = window.visualViewport;
+        const viewportLeft = viewport?.offsetLeft ?? 0;
+        const viewportTop = viewport?.offsetTop ?? 0;
+        const viewportWidth = viewport?.width ?? window.innerWidth;
+        const viewportHeight = viewport?.height ?? window.innerHeight;
+        const viewportRight = viewportLeft + viewportWidth;
+        const viewportBottom = viewportTop + viewportHeight;
+        const viewportMaxHeight = Math.max(
+            BATCH_INPUT_MIN_HEIGHT_PX,
+            viewportHeight - BATCH_INPUT_VIEWPORT_MARGIN_PX * 2
+        );
+        const keyboardRect = this.mobileKeyboard?.getPanelRect();
+
+        const targetHeight = keyboardRect?.height ?? Math.round(viewportHeight * 0.34);
+        const panelHeight = Math.max(BATCH_INPUT_MIN_HEIGHT_PX, Math.min(targetHeight, viewportMaxHeight));
+        panel.style.height = `${Math.round(panelHeight)}px`;
+
+        let left = viewportLeft + BATCH_INPUT_VIEWPORT_MARGIN_PX;
+        let top = viewportTop + BATCH_INPUT_VIEWPORT_MARGIN_PX;
+        let panelWidth = Math.max(
+            BATCH_INPUT_MIN_WIDTH_PX,
+            Math.min(BATCH_INPUT_MAX_WIDTH_PX, Math.round(viewportWidth * 0.42))
+        );
+
+        if (keyboardRect) {
+            const leftSpace = keyboardRect.left - viewportLeft;
+            const rightSpace = viewportRight - keyboardRect.right;
+            const preferredRight = rightSpace >= leftSpace;
+            const primarySpace = preferredRight ? rightSpace : leftSpace;
+            const secondarySpace = preferredRight ? leftSpace : rightSpace;
+            const requiredMin = BATCH_INPUT_MIN_WIDTH_PX + BATCH_INPUT_GAP_PX;
+            const useSecondarySide = primarySpace < requiredMin && secondarySpace > primarySpace;
+            const placeRight = useSecondarySide ? !preferredRight : preferredRight;
+            const activeSpace = placeRight ? rightSpace : leftSpace;
+            const availableWidth = Math.max(0, activeSpace - BATCH_INPUT_GAP_PX);
+            const maxWidth = Math.min(BATCH_INPUT_MAX_WIDTH_PX, Math.round(viewportWidth * 0.42));
+
+            if (availableWidth >= BATCH_INPUT_MIN_WIDTH_PX) {
+                panelWidth = Math.max(BATCH_INPUT_MIN_WIDTH_PX, Math.min(maxWidth, availableWidth));
+                left = placeRight
+                    ? keyboardRect.right + BATCH_INPUT_GAP_PX
+                    : keyboardRect.left - BATCH_INPUT_GAP_PX - panelWidth;
+                top = keyboardRect.top;
+            } else {
+                panelWidth = Math.max(
+                    BATCH_INPUT_MIN_WIDTH_PX,
+                    Math.min(BATCH_INPUT_MAX_WIDTH_PX, viewportWidth - BATCH_INPUT_VIEWPORT_MARGIN_PX * 2)
+                );
+                left = keyboardRect.left + (keyboardRect.width - panelWidth) / 2;
+                top = keyboardRect.top - BATCH_INPUT_GAP_PX - panelHeight;
+            }
+        } else {
+            panelWidth = Math.max(
+                BATCH_INPUT_MIN_WIDTH_PX,
+                Math.min(BATCH_INPUT_MAX_WIDTH_PX, Math.round(viewportWidth * 0.8))
+            );
+            left = viewportRight - panelWidth - BATCH_INPUT_VIEWPORT_MARGIN_PX;
+            top = viewportBottom - panelHeight - BATCH_INPUT_VIEWPORT_MARGIN_PX;
+        }
+
+        panel.style.width = `${Math.round(panelWidth)}px`;
+        const maxLeft = viewportRight - panelWidth - BATCH_INPUT_VIEWPORT_MARGIN_PX;
+        const maxTop = viewportBottom - panelHeight - BATCH_INPUT_VIEWPORT_MARGIN_PX;
+        const clampedLeft = Math.min(Math.max(left, viewportLeft + BATCH_INPUT_VIEWPORT_MARGIN_PX), maxLeft);
+        const clampedTop = Math.min(Math.max(top, viewportTop + BATCH_INPUT_VIEWPORT_MARGIN_PX), maxTop);
+        panel.style.left = `${Math.round(clampedLeft)}px`;
+        panel.style.top = `${Math.round(clampedTop)}px`;
     }
 
     @bind
@@ -631,6 +823,9 @@ export class Xterm {
             case 'clipboard-smart':
                 void this.handleClipboardAction();
                 this.keepTerminalFocus();
+                return;
+            case 'batch-input-toggle':
+                this.handleBatchInputToggle();
                 return;
             case 'toggle-modifier':
                 console.warn('[ttyd] unexpected toggle-modifier action in xterm handler');

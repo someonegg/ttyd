@@ -59,7 +59,6 @@ test('stopButtonPress does not run callback when hold already triggered', () => 
         holdSpec: {
             id: 'up',
             label: 'up',
-            role: 'action',
             behavior: { kind: 'send-virtual', key: 'up' },
             repeat: { kind: 'hold', interval: 'default' },
             consumesModifiers: false,
@@ -93,7 +92,6 @@ test('stopButtonPress runs callback for non-hold single press', () => {
         holdSpec: {
             id: 'tmux_copy_mode',
             label: 'C-b [',
-            role: 'action',
             behavior: { kind: 'send-combo', combo: [] },
             repeat: { kind: 'none' },
             consumesModifiers: false,

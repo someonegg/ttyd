@@ -26,6 +26,7 @@ test('reserved mobile key ids include dynamic keys and exclude custom ids', () =
 
 test('dynamic key ids include alphabet and common english symbols', () => {
     const dynamicKeyIdSet = new Set(DYNAMIC_KEY_IDS);
+    assert.equal(dynamicKeyIdSet.has('batch_input'), true, 'expected "batch_input" in dynamic key ids');
     for (const letter of 'abcdefghijklmnopqrstuvwxyz') {
         assert.equal(dynamicKeyIdSet.has(letter), true, `expected "${letter}" in dynamic key ids`);
     }

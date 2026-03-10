@@ -6,8 +6,6 @@ export type ModifierFlags = {
 
 export type VirtualKey = 'esc' | 'tab' | 'up' | 'down' | 'left' | 'right' | 'home' | 'end' | 'pageup' | 'pagedown';
 
-export type KeyRole = 'action' | 'state' | 'clipboard';
-
 type RepeatPolicy = { kind: 'none' } | { kind: 'hold'; interval: 'default' | 'wheel' };
 
 export type ComboStep =
@@ -20,12 +18,12 @@ export type KeyBehavior =
     | { kind: 'send-combo'; combo: ComboStep[] }
     | { kind: 'wheel-step'; direction: 1 | -1 }
     | { kind: 'toggle-modifier'; modifier: keyof ModifierFlags }
-    | { kind: 'clipboard-smart' };
+    | { kind: 'clipboard-smart' }
+    | { kind: 'batch-input-toggle' };
 
 type KeySpec = {
     id: string;
     label: string;
-    role: KeyRole;
     behavior: KeyBehavior;
     repeat: RepeatPolicy;
     consumesModifiers: boolean;
@@ -42,7 +40,6 @@ function createActionVirtualKeySpec(
     return {
         id,
         label,
-        role: 'action',
         behavior: { kind: 'send-virtual', key },
         repeat,
         consumesModifiers: true,
@@ -54,7 +51,6 @@ function createActionCharKeySpec(id: string, label: string, char: string, classN
     return {
         id,
         label,
-        role: 'action',
         behavior: { kind: 'send-char', char },
         repeat: { kind: 'none' },
         consumesModifiers: true,
@@ -66,7 +62,6 @@ function createWheelStepKeySpec(id: string, label: string, direction: 1 | -1, cl
     return {
         id,
         label,
-        role: 'action',
         behavior: { kind: 'wheel-step', direction },
         repeat: { kind: 'hold', interval: 'wheel' },
         consumesModifiers: false,
@@ -78,7 +73,6 @@ function createModifierToggleKeySpec(id: keyof ModifierFlags, label: string, cla
     return {
         id,
         label,
-        role: 'state',
         behavior: { kind: 'toggle-modifier', modifier: id },
         repeat: { kind: 'none' },
         consumesModifiers: false,
@@ -90,11 +84,21 @@ function createClipboardKeySpec(): KeySpec {
     return {
         id: 'clipboard',
         label: 'Paste',
-        role: 'clipboard',
         behavior: { kind: 'clipboard-smart' },
         repeat: { kind: 'none' },
         consumesModifiers: false,
         className: 'copy-btn',
+    };
+}
+
+function createBatchInputKeySpec(): KeySpec {
+    return {
+        id: 'batch_input',
+        label: 'Input',
+        behavior: { kind: 'batch-input-toggle' },
+        repeat: { kind: 'none' },
+        consumesModifiers: false,
+        className: 'key-batch-input',
     };
 }
 
@@ -123,11 +127,12 @@ const KEY_REGISTRY = {
     alt: createModifierToggleKeySpec('alt', 'Alt', 'modifier-alt'),
     ctrl: createModifierToggleKeySpec('ctrl', 'Ctrl', 'modifier-ctrl'),
     clipboard: createClipboardKeySpec(),
+    batch_input: createBatchInputKeySpec(),
 } as const satisfies Record<string, KeySpec>;
 
 type KeyId = keyof typeof KEY_REGISTRY;
 
-const ACTION_CHAR_DYNAMIC_KEY_IDS = ['enter', 'space'] as const;
+const ACTION_CHAR_DYNAMIC_KEY_IDS = ['enter', 'space', 'batch_input'] as const;
 
 const NAVIGATION_DYNAMIC_KEY_IDS = [
     'up',
@@ -347,7 +352,6 @@ export function createBuiltinDynamicCharKeySpec(keyId: string): KeySpec | null {
     return {
         id: keyId,
         label: keyId,
-        role: 'action',
         behavior: { kind: 'send-char', char: keyId },
         repeat: { kind: 'none' },
         consumesModifiers: true,
@@ -671,6 +675,10 @@ export class MobileKeyboardController {
         this.clipboardButton.setAttribute('aria-label', label);
     }
 
+    getPanelRect(): DOMRect {
+        return this.panel.getBoundingClientRect();
+    }
+
     // Public state operations
     consumeModifiers(): ModifierFlags {
         const consumed = { ...this.modifiers };
@@ -710,7 +718,6 @@ export class MobileKeyboardController {
             registry[customKey.id] = {
                 id: customKey.id,
                 label: customKey.label,
-                role: 'action',
                 behavior: { kind: 'send-combo', combo: customKey.combo },
                 repeat: { kind: 'none' },
                 consumesModifiers: false,

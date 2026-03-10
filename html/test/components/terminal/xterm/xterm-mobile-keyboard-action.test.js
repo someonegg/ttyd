@@ -40,6 +40,7 @@ function createActionHost() {
         sendVirtualWheelStep: [],
         keepTerminalFocus: 0,
         handleClipboardAction: 0,
+        handleBatchInputToggle: 0,
     };
 
     const host = {
@@ -63,6 +64,9 @@ function createActionHost() {
         },
         handleClipboardAction: async () => {
             calls.handleClipboardAction += 1;
+        },
+        handleBatchInputToggle: () => {
+            calls.handleBatchInputToggle += 1;
         },
         hasModifiers: proto.hasModifiers,
         applyShift: proto.applyShift,
@@ -141,11 +145,13 @@ test('onMobileKeyboardAction routes to expected handlers', () => {
     );
     host.onMobileKeyboardAction({ kind: 'wheel-step', direction: -1 }, { ctrl: false, alt: false, shift: false });
     host.onMobileKeyboardAction({ kind: 'clipboard-smart' }, { ctrl: false, alt: false, shift: false });
+    host.onMobileKeyboardAction({ kind: 'batch-input-toggle' }, { ctrl: false, alt: false, shift: false });
 
     assert.equal(host.calls.clearModifiers, 1, 'only send-combo should clear modifiers');
     assert.deepEqual(host.calls.sendVirtualWheelStep, [-1]);
     assert.equal(host.calls.keepTerminalFocus, 1);
     assert.equal(host.calls.handleClipboardAction, 1);
+    assert.equal(host.calls.handleBatchInputToggle, 1);
     assert.equal(host.calls.sendData[0], '\r');
     assert.equal(host.calls.sendData[1], '\x03');
 });

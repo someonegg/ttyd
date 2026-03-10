@@ -36,7 +36,7 @@ const clientOptions = {
         [
             'enter',
             { key: 'tmux_copy_mode', page: 2 },
-            'tmux_detach',
+            'batch_input',
             { key: 'tmux_new_window', page: 1 },
             'tmux_next_window',
             { key: 'tmux_list_windows', page: 1 },
