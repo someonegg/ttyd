@@ -295,7 +295,7 @@ const TAP_MOVE_THRESHOLD_PX = 8;
 
 export const DEFAULT_DYNAMIC_LAYOUTS: DynamicLayout[] = [
     ['home', 'up', 'end', 'left', 'down', 'right'],
-    ['pageup', 'up', 'pagedown', 'left', 'down', 'right'],
+    ['enter', 'up', 'batch_input', 'left', 'down', 'right'],
 ];
 
 export function cloneDefaultMobileKeyboardLayouts(): DynamicLayout[] {
