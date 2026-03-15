@@ -394,3 +394,215 @@ test('onTouchSelectionEnd dispatches double tap selection when mobile keyboard i
     assert.equal(calls.preventDefault, 1);
     assert.equal(calls.stopPropagation, 1);
 });
+
+test('onSocketClose supports enter and overlay click for manual reconnect', async () => {
+    const calls = {
+        refreshToken: 0,
+        connect: 0,
+        dispose: 0,
+        keyDispose: 0,
+        overlays: [],
+    };
+    let onKeyHandler;
+    const host = {
+        doReconnect: false,
+        closeOnDisconnect: false,
+        reconnectKeyDisposable: undefined,
+        terminal: {
+            onKey: handler => {
+                onKeyHandler = handler;
+                return {
+                    dispose: () => {
+                        calls.keyDispose += 1;
+                    },
+                };
+            },
+        },
+        overlayAddon: {
+            showOverlay: (text, timeout, options) => {
+                calls.overlays.push({ text, timeout, options });
+            },
+        },
+        refreshToken: async () => {
+            calls.refreshToken += 1;
+        },
+        connect: () => {
+            calls.connect += 1;
+        },
+        dispose: () => {
+            calls.dispose += 1;
+        },
+        onSocketClose: proto.onSocketClose,
+        triggerManualReconnect: () => proto.triggerManualReconnect.call(host),
+    };
+
+    host.onSocketClose({ code: 1000 });
+    assert.equal(calls.dispose, 1);
+    assert.equal(typeof onKeyHandler, 'function');
+    assert.equal(typeof calls.overlays[1].options.onClick, 'function');
+
+    onKeyHandler({ domEvent: { key: 'Enter' } });
+    await Promise.resolve();
+    assert.equal(calls.refreshToken, 1);
+    assert.equal(calls.connect, 1);
+    assert.equal(calls.keyDispose, 1);
+    assert.equal(calls.overlays[2].text, 'Reconnecting...');
+
+    host.reconnectKeyDisposable = {
+        dispose: () => {
+            calls.keyDispose += 1;
+        },
+    };
+    calls.overlays[1].options.onClick();
+    await Promise.resolve();
+    assert.equal(calls.refreshToken, 2);
+    assert.equal(calls.connect, 2);
+    assert.equal(calls.keyDispose, 2);
+    assert.equal(calls.overlays[3].text, 'Reconnecting...');
+});
+
+test('onSocketOpen refits viewport before auth on reconnect', () => {
+    const calls = {
+        syncViewport: 0,
+        fit: 0,
+        sendPayloads: [],
+        reset: 0,
+        focus: 0,
+        overlays: [],
+        keyDispose: 0,
+        syncMobileKeyboard: 0,
+        initListeners: 0,
+    };
+    const terminal = {
+        cols: 80,
+        rows: 24,
+        options: { disableStdin: true },
+        reset: () => {
+            calls.reset += 1;
+        },
+        focus: () => {
+            calls.focus += 1;
+        },
+    };
+    const host = {
+        opened: true,
+        reconnect: true,
+        doReconnect: false,
+        token: 'reconnect-token',
+        textEncoder: new TextEncoder(),
+        terminal,
+        fitAddon: {
+            fit: () => {
+                calls.fit += 1;
+                terminal.cols = 120;
+                terminal.rows = 40;
+            },
+        },
+        overlayAddon: {
+            showOverlay: (text, timeout) => {
+                calls.overlays.push({ text, timeout });
+            },
+        },
+        socket: {
+            send: payload => {
+                calls.sendPayloads.push(payload);
+            },
+        },
+        reconnectKeyDisposable: {
+            dispose: () => {
+                calls.keyDispose += 1;
+            },
+        },
+        syncViewport: () => {
+            calls.syncViewport += 1;
+        },
+        syncMobileKeyboard: () => {
+            calls.syncMobileKeyboard += 1;
+        },
+        initListeners: () => {
+            calls.initListeners += 1;
+        },
+        onSocketOpen: proto.onSocketOpen,
+    };
+
+    host.onSocketOpen();
+
+    assert.equal(calls.syncViewport, 1);
+    assert.equal(calls.fit, 1);
+    assert.equal(calls.sendPayloads.length, 1);
+    const handshake = JSON.parse(new TextDecoder().decode(calls.sendPayloads[0]));
+    assert.deepEqual(handshake, { AuthToken: 'reconnect-token', columns: 120, rows: 40 });
+    assert.equal(calls.reset, 1);
+    assert.equal(terminal.options.disableStdin, false);
+    assert.deepEqual(calls.overlays, [{ text: 'Reconnected', timeout: 300 }]);
+    assert.equal(calls.keyDispose, 1);
+    assert.equal(host.reconnectKeyDisposable, undefined);
+    assert.equal(host.doReconnect, true);
+    assert.equal(calls.syncMobileKeyboard, 1);
+    assert.equal(calls.initListeners, 1);
+    assert.equal(calls.focus, 1);
+});
+
+test('onSocketOpen does not refit on first connect', () => {
+    const calls = {
+        syncViewport: 0,
+        fit: 0,
+        sendPayloads: [],
+        reset: 0,
+        focus: 0,
+        overlays: [],
+    };
+    const terminal = {
+        cols: 80,
+        rows: 24,
+        options: { disableStdin: true },
+        reset: () => {
+            calls.reset += 1;
+        },
+        focus: () => {
+            calls.focus += 1;
+        },
+    };
+    const host = {
+        opened: false,
+        reconnect: true,
+        doReconnect: false,
+        token: 'first-token',
+        textEncoder: new TextEncoder(),
+        terminal,
+        fitAddon: {
+            fit: () => {
+                calls.fit += 1;
+            },
+        },
+        overlayAddon: {
+            showOverlay: (text, timeout) => {
+                calls.overlays.push({ text, timeout });
+            },
+        },
+        socket: {
+            send: payload => {
+                calls.sendPayloads.push(payload);
+            },
+        },
+        reconnectKeyDisposable: undefined,
+        syncViewport: () => {
+            calls.syncViewport += 1;
+        },
+        syncMobileKeyboard: () => undefined,
+        initListeners: () => undefined,
+        onSocketOpen: proto.onSocketOpen,
+    };
+
+    host.onSocketOpen();
+
+    assert.equal(calls.syncViewport, 0);
+    assert.equal(calls.fit, 0);
+    assert.equal(calls.sendPayloads.length, 1);
+    const handshake = JSON.parse(new TextDecoder().decode(calls.sendPayloads[0]));
+    assert.deepEqual(handshake, { AuthToken: 'first-token', columns: 80, rows: 24 });
+    assert.equal(calls.reset, 0);
+    assert.deepEqual(calls.overlays, []);
+    assert.equal(host.opened, true);
+    assert.equal(calls.focus, 1);
+});
