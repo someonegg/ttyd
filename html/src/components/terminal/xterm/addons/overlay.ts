@@ -3,10 +3,15 @@
 import { bind } from 'decko';
 import { ITerminalAddon, Terminal } from '@xterm/xterm';
 
+interface OverlayOptions {
+    onClick?: () => void;
+}
+
 export class OverlayAddon implements ITerminalAddon {
     private terminal: Terminal;
     private overlayNode: HTMLElement;
     private overlayTimeout?: number;
+    private overlayClickHandler?: EventListener;
 
     constructor() {
         this.overlayNode = document.createElement('div');
@@ -34,17 +39,44 @@ position: absolute;
         this.terminal = terminal;
     }
 
-    dispose(): void {}
+    dispose(): void {
+        this.clearClickableOverlay();
+        if (this.overlayTimeout) clearTimeout(this.overlayTimeout);
+    }
+
+    private clearClickableOverlay() {
+        const { overlayNode, overlayClickHandler } = this;
+        if (overlayClickHandler) {
+            overlayNode.removeEventListener('click', overlayClickHandler);
+            this.overlayClickHandler = undefined;
+        }
+        overlayNode.style.cursor = 'default';
+        overlayNode.style.zIndex = '';
+        overlayNode.removeAttribute('role');
+        overlayNode.removeAttribute('tabindex');
+    }
+
+    private setupClickableOverlay(onClick: () => void) {
+        const { overlayNode } = this;
+        this.overlayClickHandler = () => onClick();
+        overlayNode.addEventListener('click', this.overlayClickHandler);
+        overlayNode.style.cursor = 'pointer';
+        overlayNode.style.zIndex = '10';
+        overlayNode.setAttribute('role', 'button');
+        overlayNode.setAttribute('tabindex', '0');
+    }
 
     @bind
-    showOverlay(msg: string, timeout?: number): void {
+    showOverlay(msg: string, timeout?: number, options?: OverlayOptions): void {
         const { terminal, overlayNode } = this;
         if (!terminal.element) return;
 
+        this.clearClickableOverlay();
         overlayNode.style.color = '#101010';
         overlayNode.style.backgroundColor = '#f0f0f0';
         overlayNode.textContent = msg;
         overlayNode.style.opacity = '0.75';
+        if (options?.onClick) this.setupClickableOverlay(options.onClick);
 
         if (!overlayNode.parentNode) {
             terminal.element.appendChild(overlayNode);

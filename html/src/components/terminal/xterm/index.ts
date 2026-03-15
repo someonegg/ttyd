@@ -809,6 +809,11 @@ export class Xterm {
     private onSocketOpen() {
         console.log('[ttyd] websocket connection opened');
 
+        if (this.opened) {
+            this.syncViewport();
+            this.fitAddon.fit();
+        }
+
         const { textEncoder, terminal, overlayAddon } = this;
         const msg = JSON.stringify({ AuthToken: this.token, columns: terminal.cols, rows: terminal.rows });
         this.socket?.send(textEncoder.encode(msg));
@@ -850,14 +855,22 @@ export class Xterm {
             this.reconnectKeyDisposable = terminal.onKey(e => {
                 const event = e.domEvent;
                 if (event.key === 'Enter') {
-                    this.reconnectKeyDisposable?.dispose();
-                    this.reconnectKeyDisposable = undefined;
-                    overlayAddon.showOverlay('Reconnecting...');
-                    refreshToken().then(connect);
+                    this.triggerManualReconnect();
                 }
             });
-            overlayAddon.showOverlay('Press ⏎ to Reconnect');
+            overlayAddon.showOverlay('Press ⏎ to Reconnect', undefined, {
+                onClick: this.triggerManualReconnect,
+            });
         }
+    }
+
+    @bind
+    private triggerManualReconnect() {
+        const { refreshToken, connect, overlayAddon } = this;
+        this.reconnectKeyDisposable?.dispose();
+        this.reconnectKeyDisposable = undefined;
+        overlayAddon.showOverlay('Reconnecting...');
+        refreshToken().then(connect);
     }
 
     @bind
