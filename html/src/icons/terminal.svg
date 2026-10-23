@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>ttyd</title>
+  <path fill="#18282e" d="M0 0h512v512H0z"/>
+  <path d="M152 176 L232 256 L152 336" fill="none" stroke="#f5f8f8" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M280 336 L360 336" fill="none" stroke="#7dd3c7" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

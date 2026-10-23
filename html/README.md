@@ -22,7 +22,16 @@ corepack yarn install --immutable
 
 Run `corepack yarn run build` from the `html` directory. This generates `dist/inline.html` and embeds it in `../src/html.h`.
 
-Rebuild the C server afterward to include the updated frontend. Commit both generated files when updating the bundled frontend. To serve the HTML directly instead, run `ttyd --writable --index ./html/dist/inline.html bash` from the repository root.
+The build also embeds the Web App manifest and PNG icons in `../src/web_assets.h`.
+Commit that generated header alongside frontend changes. The server serves these
+resources relative to its base path, including when using `--index`.
+
+The icon source is `src/icons/terminal.svg`. To regenerate the SVG, favicon, and
+180/192/512px PNGs from their shared geometry, install Pillow and run
+`python3 scripts/generate-icons.py`, then rebuild. The full-bleed background and
+central artwork also allow the 512px icon to be used as a maskable icon.
+
+Rebuild the C server afterward to include the updated frontend. Commit the generated HTML and both headers when updating the bundled frontend. To serve the HTML directly instead, run `ttyd --writable --index ./html/dist/inline.html bash` from the repository root.
 
 ## Test
 

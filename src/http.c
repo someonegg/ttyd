@@ -5,6 +5,7 @@
 #include "html.h"
 #include "server.h"
 #include "utils.h"
+#include "web_assets.h"
 
 enum { AUTH_OK, AUTH_FAIL, AUTH_ERROR };
 
@@ -119,6 +120,28 @@ int callback_http(struct lws *wsi, enum lws_callback_reasons reason, void *user,
 
       p = buffer + LWS_PRE;
       end = p + sizeof(buffer) - LWS_PRE;
+
+      size_t base_len = strlen(endpoints.index);
+      for (size_t i = 0; i < sizeof(web_assets) / sizeof(web_assets[0]); i++) {
+        if (strncmp(pss->path, endpoints.index, base_len) != 0 ||
+            strcmp(pss->path + base_len, web_assets[i].name) != 0)
+          continue;
+
+        if (lws_add_http_header_status(wsi, HTTP_STATUS_OK, &p, end) ||
+            lws_add_http_header_by_token(wsi, WSI_TOKEN_HTTP_CONTENT_TYPE,
+                                        (const unsigned char *)web_assets[i].type,
+                                        (int)strlen(web_assets[i].type), &p, end) ||
+            lws_add_http_header_content_length(wsi, (unsigned long)web_assets[i].len, &p, end) ||
+            lws_finalize_http_header(wsi, &p, end) ||
+            lws_write(wsi, buffer + LWS_PRE, p - (buffer + LWS_PRE), LWS_WRITE_HTTP_HEADERS) < 0)
+          return 1;
+
+        pss->buffer = pss->ptr = xmalloc(web_assets[i].len);
+        memcpy(pss->buffer, web_assets[i].data, web_assets[i].len);
+        pss->len = web_assets[i].len;
+        lws_callback_on_writable(wsi);
+        return 0;
+      }
 
       if (strcmp(pss->path, endpoints.token) == 0) {
         const char *credential = server->credential != NULL ? server->credential : "";
