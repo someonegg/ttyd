@@ -215,11 +215,11 @@ int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, 
       }
       if (!check_auth(wsi, pss)) return 1;
 
-      n = lws_hdr_copy(wsi, pss->path, sizeof(pss->path), WSI_TOKEN_GET_URI);
+      int path_len = lws_hdr_copy(wsi, pss->path, sizeof(pss->path), WSI_TOKEN_GET_URI);
 #if defined(LWS_ROLE_H2)
-      if (n <= 0) n = lws_hdr_copy(wsi, pss->path, sizeof(pss->path), WSI_TOKEN_HTTP_COLON_PATH);
+      if (path_len <= 0) path_len = lws_hdr_copy(wsi, pss->path, sizeof(pss->path), WSI_TOKEN_HTTP_COLON_PATH);
 #endif
-      if (strncmp(pss->path, endpoints.ws, n) != 0) {
+      if (path_len <= 0 || strcmp(pss->path, endpoints.ws) != 0) {
         lwsl_warn("refuse to serve WS client for illegal ws path: %s\n", pss->path);
         return 1;
       }
@@ -285,6 +285,8 @@ int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, 
       break;
 
     case LWS_CALLBACK_RECEIVE:
+      // Empty frames may also occur within a fragmented message.
+      if (len == 0 && pss->buffer == NULL) return 0;
       if (pss->buffer == NULL) {
         pss->buffer = xmalloc(len);
         pss->len = len;
@@ -373,6 +375,7 @@ int callback_tty(struct lws *wsi, enum lws_callback_reasons reason, void *user, 
       for (int i = 0; i < pss->argc; i++) {
         free(pss->args[i]);
       }
+      free(pss->args);
 
       if (pss->process != NULL) {
         ((pty_ctx_t *)pss->process->ctx)->ws_closed = true;
