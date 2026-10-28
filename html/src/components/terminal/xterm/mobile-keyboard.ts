@@ -940,6 +940,7 @@ export class MobileKeyboardController {
             this.dragBar.removeEventListener('pointerdown', this.onDragStart);
         }
         this.panel.removeEventListener('pointerdown', this.onPanelPressStart);
+        this.panel.removeEventListener('mousedown', this.onPanelMouseDown, true);
         window.removeEventListener('resize', this.onBoundsChange);
         window.visualViewport?.removeEventListener('resize', this.onBoundsChange);
         window.visualViewport?.removeEventListener('scroll', this.onBoundsChange);
@@ -1273,6 +1274,7 @@ export class MobileKeyboardController {
         this.panel.appendChild(row4);
         this.panel.addEventListener('contextmenu', this.onPanelContextMenu);
         this.panel.addEventListener('pointerdown', this.onPanelPressStart);
+        this.panel.addEventListener('mousedown', this.onPanelMouseDown, true);
         this.setClipboardButtonMode(this.clipboardButtonMode);
         this.syncDynamicButtons();
     }
@@ -1347,6 +1349,12 @@ export class MobileKeyboardController {
 
     private onPanelPressStart = (event: Event) => {
         this.swallowPanelGapEvent(event);
+    };
+
+    private onPanelMouseDown = (event: Event) => {
+        // iOS may emit compatibility mouse events despite canceled pointerdown.
+        // Cancel focus transfer before it blurs xterm and dismisses the keyboard.
+        event.preventDefault();
     };
 
     private onPanelContextMenu = (event: Event) => {
